@@ -1,68 +1,33 @@
-import os, subprocess, sys
-from github import Github
-import openai
+import os
+import requests
+import json
+from sqlglot import parse_one, ParseError
+from groq import Groq
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-gh = Github(os.getenv("GITHUB_TOKEN"))
+# Environment variables
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GITHUB_EVENT_PATH = os.getenv("GITHUB_EVENT_PATH")
+REPO = os.getenv("GITHUB_REPOSITORY")
 
-# Fetch PR info
-repo = gh.get_repo(os.getenv("GITHUB_REPOSITORY"))
-pr_number = int(os.getenv("GITHUB_REF").split("/")[-2])
-pr = repo.get_pull(pr_number)
+# Initialize Groq client
+client = Groq(api_key=GROQ_API_KEY)
 
-# Determine changed .sql files in the PR diff
-base = os.getenv("BASE_BRANCH", "main")
-subprocess.run(f"git fetch origin {base}", shell=True, check=True)
-diff = subprocess.getoutput(f"git diff --name-only origin/{base}")
-sql_files = [f.strip() for f in diff.splitlines() if f.strip().endswith(".sql")]
+def get_changed_sql_files():
+    if not GITHUB_EVENT_PATH or not os.path.isfile(GITHUB_EVENT_PATH):
+        print("GITHUB_EVENT_PATH is not set or file does not exist.")
+        return [], None
 
-if not sql_files:
-    print("✅ No SQL files changed.")
-    sys.exit(0)
+    with open(GITHUB_EVENT_PATH, "r") as f:
+        event = json.load(f)
 
-print(f"🔍 Validating {len(sql_files)} SQL file(s): {sql_files}")
+    files = []
+    pr_files_url = event.get("pull_request", {}).get("url", "") + "/files"
 
-# Iterate each file
-all_comments = []
-for path in sql_files:
-    # Read file
-    try:
-        with open(path, 'r') as f:
-            content = f.read()
-    except FileNotFoundError:
-        continue
-
-    # LLM prompt
-    prompt = (
-        "You are an expert SQL LLM. Review the following SQL code and provide:\n"
-        "- Syntax issues\n"
-        "- Logical errors\n"
-        "- Security risks (e.g., SQL injection)\n"
-        "- Performance issues\n"
-        "- Suggestions or improvements\n\n"
-        f"SQL:\n```\n{content}\n```"
-    )
-
-    resp = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-    )
-    review = resp.choices[0].message.content
-    print(f"✏️ Review for {path}:\n{review}\n")
-
-    comment = f"### AI SQL Review for `{path}`\n\n{review}"
-    all_comments.append(comment)
-
-# Post a single comment to the PR
-pr.create_issue_comment(
-    "## 🤖 AI-Powered SQL Validation Results\n\n" +
-    "\n---\n\n".join(all_comments)
-)
-
-# Optionally, exit with failure if issues found
-if any("error" in c.lower() or "issue" in c.lower() for c in all_comments):
-    print("❌ SQL issues found.")
-    sys.exit(1)
-
-print("✅ SQL validation passed.")
+    if pr_files_url:
+        headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+        while pr_files_url:
+            res = requests.get(pr_files_url, headers=headers)
+            res.raise_for_status()
+            for fobj in res.json():
+                if fobj["filename"].endswith(".sql"):
