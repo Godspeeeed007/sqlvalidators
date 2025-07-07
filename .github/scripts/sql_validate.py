@@ -6,14 +6,14 @@ from sqlglot import parse_one, ParseError
 from groq import Groq
 from urllib.parse import urljoin
 
-# Environment variables
+# Load environment variables
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GITHUB_EVENT_PATH = os.getenv("GITHUB_EVENT_PATH")
 REPO = os.getenv("GITHUB_REPOSITORY")
 
 if not all([GITHUB_TOKEN, GROQ_API_KEY, GITHUB_EVENT_PATH, REPO]):
-    print("Missing one or more required environment variables: GITHUB_TOKEN, GROQ_API_KEY, GITHUB_EVENT_PATH, REPO")
+    print("Missing required environment variables: GITHUB_TOKEN, GROQ_API_KEY, GITHUB_EVENT_PATH, REPO")
     exit(1)
 
 client = Groq(api_key=GROQ_API_KEY)
@@ -21,10 +21,10 @@ client = Groq(api_key=GROQ_API_KEY)
 def get_available_groq_models():
     url = "https://api.groq.com/openai/v1/models"
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-    resp = requests.get(url, headers=headers)
-    resp.raise_for_status()
-    models = resp.json()
-    # Pick a preferred model, e.g., first LLaMA model or fallback to first available
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    models = response.json()
+    # Prefer llama models, fallback to first available
     for model in models.get("data", []):
         model_id = model.get("id", "")
         if "llama" in model_id.lower():
@@ -112,7 +112,6 @@ def validate_sql_with_llm(sql_text, model):
         ],
         max_tokens=500
     )
-    # Correctly access the first choice's message content
     return response.choices[0].message.content
 
 def post_comment(repo, pr_number, body):
