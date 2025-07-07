@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import base64
 from sqlglot import parse_one, ParseError
 from groq import Groq
 from urllib.parse import urljoin
@@ -45,7 +46,6 @@ def get_changed_sql_files():
         pr_number = event.get("pull_request", {}).get("number")
 
     elif event_name == "push":
-        # Get list of changed files from push event
         commit_sha = event.get("after")
         repo_owner, repo_name = REPO.split("/")
         headers = {"Authorization": f"token {GITHUB_TOKEN}"}
@@ -65,7 +65,44 @@ def get_changed_sql_files():
 
     return files, pr_number
 
-# Your existing validate_sql_syntax, validate_sql_with_llm, post_comment functions remain
+def get_file_content(raw_url):
+    res = requests.get(raw_url)
+    res.raise_for_status()
+    return res.text
+
+def get_file_content_from_push(repo_owner, repo_name, file_path, commit_sha):
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file_path}?ref={commit_sha}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+    content_json = res.json()
+    content = base64.b64decode(content_json['content']).decode('utf-8')
+    return content
+
+def validate_sql_syntax(sql_text):
+    try:
+        parse_one(sql_text)
+        return True, None
+    except ParseError as e:
+        return False, str(e)
+
+def validate_sql_with_llm(sql_text):
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You're a SQL expert. Validate and suggest improvements to the SQL code."},
+            {"role": "user", "content": sql_text}
+        ],
+        max_tokens=500
+    )
+    return response.choices.message.content
+
+def post_comment(repo, pr_number, body):
+    url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    data = {"body": body}
+    res = requests.post(url, headers=headers, json=data)
+    res.raise_for_status()
 
 def main():
     files, pr_number = get_changed_sql_files()
@@ -73,13 +110,20 @@ def main():
         print("No SQL files changed.")
         return
 
+    repo_owner, repo_name = REPO.split("/")
+    commit_sha = None
+    if os.getenv("GITHUB_EVENT_NAME") == "push":
+        with open(GITHUB_EVENT_PATH, "r") as f:
+            event = json.load(f)
+        commit_sha = event.get("after")
+
     for filename, raw_url in files:
         print(f"Processing file: {filename}")
         if raw_url:
             sql = get_file_content(raw_url)
         else:
-            print(f"No raw_url available for {filename}, skipping content fetch.")
-            continue
+            # For push events, fetch content via Contents API
+            sql = get_file_content_from_push(repo_owner, repo_name, filename, commit_sha)
 
         is_valid, error = validate_sql_syntax(sql)
         if not is_valid:
