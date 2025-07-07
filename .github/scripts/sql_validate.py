@@ -24,13 +24,11 @@ def get_available_groq_models():
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     models = resp.json()
-    # Filter for chat-capable models or pick a preferred one
-    # For example, pick the first model containing 'llama' or fallback to a default
+    # Pick a preferred model, e.g., first LLaMA model or fallback to first available
     for model in models.get("data", []):
         model_id = model.get("id", "")
         if "llama" in model_id.lower():
             return model_id
-    # fallback
     return models.get("data", [])[0].get("id") if models.get("data") else None
 
 def get_changed_sql_files():
@@ -114,7 +112,8 @@ def validate_sql_with_llm(sql_text, model):
         ],
         max_tokens=500
     )
-    return response.choices.message.content
+    # Correctly access the first choice's message content
+    return response.choices[0].message.content
 
 def post_comment(repo, pr_number, body):
     url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
@@ -159,7 +158,7 @@ def main():
                 except Exception as e:
                     print(f"Failed to post syntax error comment for {filename}: {e}")
             else:
-                print(comment)  # Push event: print to logs
+                print(comment)  # For push events, print to logs
             continue
 
         try:
@@ -169,7 +168,7 @@ def main():
                 post_comment(REPO, pr_number, comment)
                 print(f"Posted LLM suggestions for {filename}")
             else:
-                print(comment)  # Push event: print to logs
+                print(comment)  # For push events, print to logs
         except Exception as e:
             print(f"Failed to get/post LLM suggestions for {filename}: {e}")
 
