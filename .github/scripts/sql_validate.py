@@ -122,7 +122,6 @@ def main():
         if raw_url:
             sql = get_file_content(raw_url)
         else:
-            # For push events, fetch content via Contents API
             sql = get_file_content_from_push(repo_owner, repo_name, filename, commit_sha)
 
         is_valid, error = validate_sql_syntax(sql)
@@ -134,6 +133,8 @@ def main():
                     print(f"Posted syntax error comment for {filename}")
                 except Exception as e:
                     print(f"Failed to post syntax error comment for {filename}: {e}")
+            else:
+                print(comment)  # Print syntax error in logs for push events
             continue
 
         try:
@@ -142,6 +143,8 @@ def main():
             if pr_number:
                 post_comment(REPO, pr_number, comment)
                 print(f"Posted LLM suggestions for {filename}")
+            else:
+                print(comment)  # Print suggestions in logs for push events
         except Exception as e:
             print(f"Failed to get/post LLM suggestions for {filename}: {e}")
 
