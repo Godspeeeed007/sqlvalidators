@@ -1,8 +1,11 @@
 name: AI SQL Validation
 
 on:
-  repository_dispatch:
-    types: [run-sql-validation]
+  push:
+    paths:
+      - '**/*.sql'   # Trigger only on SQL file changes
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 jobs:
   validate-sql:
