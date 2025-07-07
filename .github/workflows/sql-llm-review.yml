@@ -1,8 +1,8 @@
 name: AI SQL Validation
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  repository_dispatch:
+    types: [run-sql-validation]
 
 jobs:
   validate-sql:
