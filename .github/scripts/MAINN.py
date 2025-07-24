@@ -13,7 +13,7 @@ GITHUB_EVENT_NAME = os.getenv("GITHUB_EVENT_NAME")
 REPO = os.getenv("GITHUB_REPOSITORY")
 
 PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
-PERPLEXITY_MODEL = "sonar-pro"
+PERPLEXITY_MODEL = "sonar"
 
 # ---- Prompt Templates ----
 PROMPT_CREATE_TABLE = (
